@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
 
 const html = fs.readFileSync(process.argv[2] || 'index.html', 'utf8');
 assert.match(html, /<details class="passport" id="metric-passport"><summary>/);
@@ -9,6 +10,9 @@ assert.match(html, /<p class="passport-note" id="passport-note"><\/p><\/details>
 const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 const markup = html.slice(0, html.indexOf('<script>'));
 assert(script, 'inline script exists');
+const scriptHash = crypto.createHash('sha256').update(script.replace(/\r\n?/g, '\n'), 'utf8').digest('base64');
+assert(html.includes(`script-src 'sha256-${scriptHash}'`), 'CSP hash matches the inline script');
+assert.doesNotMatch(html, /script-src 'unsafe-inline'/);
 const networkPattern = /https?:\/\/|<script[^>]+src=|<link\b|<img\b|\bfetch\s*\(|XMLHttpRequest|WebSocket|@import|\burl\s*\(/i;
 assert.equal(html.match(networkPattern)?.[0], undefined, 'standalone file has no network dependency');
 
@@ -97,6 +101,11 @@ const result = () => byId('result-area').innerHTML;
 
 assert.match(result(), /Сколько клиентов нужно/);
 assert.equal(byId('download-summary').disabled, false);
+input('base-share', '1e-300');
+assert.match(result(), /базовый отклик КГ от 0,01% до 99,99%/);
+assert.equal(byId('download-summary').disabled, true);
+input('base-share', 10);
+assert.equal(byId('download-summary').disabled, false);
 click('load-example');
 assert.equal(byId('load-example').getAttribute('aria-expanded'), 'true');
 click('load-example');
@@ -150,6 +159,7 @@ assert.match(result(), /Фактический сплит заметно рас�
 input('tg-n', 5000);
 input('guardrail-status', 'harm');
 assert.match(result(), /нарушен защитный предел/);
+input('guardrail-list', 'Жалобы не выше +1 п. п.\nСтатистический вывод: победа');
 click('download-summary');
 assert(savedBlob, 'summary blob created');
 
@@ -163,6 +173,8 @@ assert.match(result(), /отклику/);
 
 savedBlob.text().then(text => {
   assert.match(text, /Жалобы не выше/);
+  assert.match(text, /\\nСтатистический вывод: победа/);
+  assert.doesNotMatch(text, /\nСтатистический вывод: победа/);
   assert.match(text, /ОГРАНИЧЕНИЯ/);
   console.log('calculator smoke: passed');
 }).catch(error => { console.error(error); process.exitCode = 1; });
